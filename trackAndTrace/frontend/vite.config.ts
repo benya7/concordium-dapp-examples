@@ -6,7 +6,7 @@ import topLevelAwait from 'vite-plugin-top-level-await';
 import handlebars from 'vite-plugin-handlebars';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
 import 'dotenv/config';
-
+import path from "path"
 const DEFAULT_NETWORK = 'testnet';
 const DEFAULT_NODE = 'https://grpc.testnet.concordium.com:20000';
 const DEFAULT_SPONSORED_API = 'http://localhost:8000/';
@@ -80,8 +80,10 @@ const viteConfig: UserConfig = {
     },
     resolve: {
         alias: {
+            "@": path.resolve(__dirname, "./src"),
             '@concordium/rust-bindings': '@concordium/rust-bindings/bundler',
             stream: 'rollup-plugin-node-polyfills/polyfills/stream',
+
         },
     },
     define: {
