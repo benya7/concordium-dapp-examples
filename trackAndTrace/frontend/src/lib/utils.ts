@@ -1,4 +1,10 @@
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
 import { AccountAddress } from '@concordium/web-sdk';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
 
 /**
  * This function validates if a string represents a valid accountAddress in base58 encoding.
@@ -8,15 +14,14 @@ import { AccountAddress } from '@concordium/web-sdk';
  * @returns An error message if validation fails.
  */
 export function validateAccountAddress(accountAddress: string | undefined) {
-    if (accountAddress) {
-        try {
-            AccountAddress.fromBase58(accountAddress);
-        } catch (e) {
-            return `Please enter a valid account address. It is a base58 string with a fixed length of 50 characters. Original error: ${
-                (e as Error).message
-            }.`;
-        }
+  if (accountAddress) {
+    try {
+      AccountAddress.fromBase58(accountAddress);
+    } catch (e) {
+      return `Please enter a valid account address. It is a base58 string with a fixed length of 50 characters. Original error: ${(e as Error).message
+        }.`;
     }
+  }
 }
 
 /**
@@ -31,13 +36,13 @@ export function validateAccountAddress(accountAddress: string | undefined) {
  * @throws If the number is too large to be converted into the `TokenIdU64` representation.
  */
 export function ToTokenIdU64(number: number | bigint): string {
-    const maxU64: bigint = 2n ** 64n - 1n;
+  const maxU64: bigint = 2n ** 64n - 1n;
 
-    if (number > maxU64) {
-        throw new Error('Number too large to be converted into `TokenIdU64`.');
-    }
+  if (number > maxU64) {
+    throw new Error('Number too large to be converted into `TokenIdU64`.');
+  }
 
-    return BigInt(number).toString(16).padStart(16, '0').match(/.{2}/g)!.reverse().join('');
+  return BigInt(number).toString(16).padStart(16, '0').match(/.{2}/g)!.reverse().join('');
 }
 
 /**
@@ -51,6 +56,7 @@ export function ToTokenIdU64(number: number | bigint): string {
  * @returns The equivalent `bigint` type of the `tokenIdU64`.
  */
 export function FromTokenIdU64(tokenIdU64: string): bigint {
-    const bigEndianHexString = tokenIdU64.match(/.{2}/g)?.reverse().join('');
-    return BigInt(`0x${bigEndianHexString} `);
+  const bigEndianHexString = tokenIdU64.match(/.{2}/g)?.reverse().join('');
+  return BigInt(`0x${bigEndianHexString} `);
 }
+

@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Controller, useForm, useWatch } from 'react-hook-form';
-import { Alert, Button, Form } from 'react-bootstrap';
-import Select from 'react-select';
+import { useForm } from 'react-hook-form';
 import { Buffer } from 'buffer/';
 import JSONbig from 'json-bigint';
 
@@ -9,12 +7,17 @@ import { WalletConnection, typeSchemaFromBase64 } from '@concordium/wallet-conne
 import { useGrpcClient } from '@concordium/react-components';
 import { AccountAddress, Timestamp } from '@concordium/web-sdk';
 
-import { TxHashLink } from './CCDScanLinks';
+import { TxHashLink } from '@/components/CCDScanLinks';
 import * as constants from '.././constants';
 import { nonceOf } from '../track_and_trace_contract';
 import * as TrackAndTraceContract from '../../generated/module_track_and_trace'; // Code generated from a smart contract module. The naming convention of the generated file is `moduleName_smartContractName`.
-import { ToTokenIdU64 } from '../utils';
-
+import { ToTokenIdU64 } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/Alert';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 interface Props {
     connection: WalletConnection | undefined;
     accountAddress: string | undefined;
@@ -29,15 +32,15 @@ const NEW_STATUS_OPTIONS = [
 ];
 
 function generateMessage(
-    newStatus: 'Produced' | 'InTransit' | 'InStore' | 'Sold' | undefined,
+    newStatus: 'Produced' | 'InTransit' | 'InStore' | 'Sold',
     itemID: number | bigint,
     expiryTimeSignature: Date,
     nonce: number | bigint,
 ) {
     try {
-        if (newStatus === undefined) {
-            throw Error(`'newStatus' input field is undefined`);
-        }
+        // if (newStatus === '') {
+        //     throw Error(`'newStatus' input field is undefined`);
+        // }
 
         // The `item_id` is of type `TokenIdU64` in the smart contract which is represented as a little-endian hex string.
         // E.g. the `TokenIdU64` representation of `1` is the hex string `0100000000000000`.
@@ -76,19 +79,13 @@ export function ChangeItemStatus(props: Props) {
     const { connection, accountAddress, activeConnectorError } = props;
 
     interface FormType {
-        itemID: number | bigint | undefined;
-        newStatus: 'Produced' | 'InTransit' | 'InStore' | 'Sold' | undefined;
+        itemID: string;
+        newStatus: 'Produced' | 'InTransit' | 'InStore' | 'Sold';
     }
-    const { control, register, formState, handleSubmit } = useForm<FormType>({ mode: 'all' });
-
-    const [newStatus, itemID] = useWatch({
-        control: control,
-        name: ['newStatus', 'itemID'],
-    });
+    const form = useForm<FormType>({ mode: 'all', defaultValues: { itemID: '', newStatus: 'Produced' } });
 
     const [txHash, setTxHash] = useState<string | undefined>(undefined);
     const [error, setError] = useState<string | undefined>(undefined);
-    const [nextNonceError, setNextNonceError] = useState<undefined | string>(undefined);
     const [nextNonce, setNextNonce] = useState<number | bigint>(0);
 
     const grpcClient = useGrpcClient(constants.NETWORK);
@@ -105,10 +102,10 @@ export function ChangeItemStatus(props: Props) {
                     if (nonceValue !== undefined) {
                         setNextNonce(nonceValue[0]);
                     }
-                    setNextNonceError(undefined);
+                    setError(undefined);
                 })
                 .catch((e) => {
-                    setNextNonceError((e as Error).message);
+                    setError((e as Error).message);
                     setNextNonce(0);
                 });
         }
@@ -121,14 +118,14 @@ export function ChangeItemStatus(props: Props) {
         return () => clearInterval(interval);
     }, [refreshNonce]);
 
-    async function onSubmit() {
+    async function onSubmit(values: FormType) {
         setError(undefined);
 
-        if (newStatus === undefined) {
-            setError(`'newStatus' input field is undefined`);
-            throw Error(`'newStatus' input field is undefined`);
-        }
-        if (itemID === undefined) {
+        // if (values.newStatus === "") {
+        //     setError(`'newStatus' input field is undefined`);
+        //     throw Error(`'newStatus' input field is undefined`);
+        // }
+        if (values.itemID === '') {
             setError(`'itemID' input field is undefined`);
             throw Error(`'itemID' input field is undefined`);
         }
@@ -139,7 +136,12 @@ export function ChangeItemStatus(props: Props) {
 
         if (connection && accountAddress) {
             try {
-                const [payload, serializedMessage] = generateMessage(newStatus, itemID, expiryTimeSignature, nextNonce);
+                const [payload, serializedMessage] = generateMessage(
+                    values.newStatus,
+                    Number(values.itemID),
+                    expiryTimeSignature,
+                    nextNonce,
+                );
 
                 const permitSignature = await connection.signMessage(accountAddress, {
                     type: 'BinaryMessage',
@@ -183,56 +185,80 @@ export function ChangeItemStatus(props: Props) {
     }
 
     return (
-        <div className="centered">
-            <div className="card">
-                <h2 className="centered"> Update The Product Status</h2>
-                <br />
-                <Form onSubmit={handleSubmit(onSubmit)}>
-                    <Form.Group className="col mb-3">
-                        <Form.Label>Item ID</Form.Label>
-                        <Form.Control {...register('itemID', { required: true })} type="number" placeholder="12345" />
-                        {formState.errors.itemID && <Alert variant="info"> Item ID is required </Alert>}
-                        <Form.Text />
-                    </Form.Group>
-
-                    <Form.Group className="col mb-3">
-                        <Form.Label>New Status</Form.Label>
-                        <Controller
-                            name="newStatus"
-                            control={control}
-                            defaultValue={'InTransit'}
-                            render={({ field: { onChange } }) => (
-                                <Select
-                                    getOptionValue={(option) => option.value}
-                                    options={NEW_STATUS_OPTIONS}
-                                    onChange={(e) => {
-                                        onChange(e?.value);
-                                    }}
-                                />
-                            )}
-                        />
-                    </Form.Group>
-
-                    {nextNonce !== undefined && (
-                        <Alert variant="info">Your next nonce: {JSONbig.stringify(nextNonce)} </Alert>
-                    )}
-
-                    <Button variant="secondary" type="submit">
-                        Update Status
-                    </Button>
-                </Form>
-
-                {error && <Alert variant="danger">{error}</Alert>}
+        <div className="h-full w-full flex flex-col items-center pt-32">
+            <Card className="w-96">
+                <CardHeader>
+                    <CardTitle>Update The Product Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                            <FormField
+                                control={form.control}
+                                name="itemID"
+                                rules={{ required: 'Item ID is required' }}
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Item ID</FormLabel>
+                                        <FormControl>
+                                            <Input
+                                                type="number"
+                                                placeholder="Enter the tracking number ID"
+                                                {...field}
+                                            />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <FormField
+                                control={form.control}
+                                name="newStatus"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>New Status</FormLabel>
+                                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                            <FormControl>
+                                                <SelectTrigger>
+                                                    <SelectValue placeholder="Select a verified email to display" />
+                                                </SelectTrigger>
+                                            </FormControl>
+                                            <SelectContent>
+                                                {NEW_STATUS_OPTIONS.map((opt) => (
+                                                    <SelectItem key={opt.value} value={opt.value}>
+                                                        {opt.label}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <Button type="submit">Submit</Button>
+                        </form>
+                    </Form>
+                </CardContent>
+            </Card>
+            <div className="fixed bottom-4">
+                {error && <Alert destructive title="Error" description={error} />}
                 {activeConnectorError && (
-                    <Alert variant="danger">
-                        Connect Error: {activeConnectorError}. Refresh page if you have the browser wallet installed.
-                    </Alert>
+                    <Alert
+                        destructive
+                        title="Connect Error"
+                        description={
+                            <>
+                                <p>{activeConnectorError}</p>
+                                <p>Refresh page if you have the browser wallet installed.</p>
+                            </>
+                        }
+                    />
                 )}
-                {nextNonceError && <Alert variant="danger">Error: {nextNonceError}. </Alert>}
                 {txHash && (
-                    <Alert variant="info">
-                        <TxHashLink txHash={txHash} />
-                    </Alert>
+                    <Alert
+                        title="Transaction Result"
+                        description={ <TxHashLink txHash={txHash} />}
+                    />
                 )}
             </div>
         </div>

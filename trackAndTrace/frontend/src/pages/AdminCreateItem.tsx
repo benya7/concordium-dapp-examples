@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Button, Form } from 'react-bootstrap';
-import { useForm, useWatch } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 
 import { WalletConnection } from '@concordium/wallet-connectors';
 import {
@@ -13,11 +12,15 @@ import {
 import { useGrpcClient } from '@concordium/react-components';
 
 import * as constants from '../constants';
-import { TxHashLink } from './CCDScanLinks';
+import { TxHashLink } from '../components/CCDScanLinks';
 import { createItem } from '../track_and_trace_contract';
 import * as TrackAndTraceContract from '../../generated/module_track_and_trace';
-import { FromTokenIdU64 } from '../utils';
-
+import { FromTokenIdU64 } from '@/lib/utils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Alert } from '@/components/Alert';
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 interface Props {
     connection: WalletConnection | undefined;
     accountAddress: string | undefined;
@@ -32,20 +35,14 @@ export function AdminCreateItem(props: Props) {
     const { connection, accountAddress, activeConnectorError } = props;
 
     interface FormType {
-        url: string | undefined;
+        url: string;
     }
-    const { control, register, formState, handleSubmit } = useForm<FormType>({ mode: 'all' });
-
-    const [url] = useWatch({
-        control: control,
-        name: ['url'],
-    });
+    const form = useForm<FormType>({ mode: 'all', defaultValues: { url: ''} });
 
     const [txHash, setTxHash] = useState<string | undefined>(undefined);
     const [error, setError] = useState<string | undefined>(undefined);
-
+    const [imageFile, setImageFile] = useState<File | undefined>(undefined);
     const [newItemId, setNewItemId] = useState<number | bigint | undefined>(undefined);
-    const [itemIdError, setItemIdError] = useState<string | undefined>(undefined);
 
     const grpcClient = useGrpcClient(constants.NETWORK);
 
@@ -73,20 +70,20 @@ export function AdminCreateItem(props: Props) {
                         const itemId: bigint = FromTokenIdU64(itemCreatedEvent.item_id);
                         setNewItemId(itemId);
                     } else {
-                        setItemIdError('Tansaction failed and event decoding failed.');
+                        setError('Tansaction failed and event decoding failed.');
                     }
                 })
                 .catch((e) => {
                     setNewItemId(undefined);
-                    setItemIdError((e as Error).message);
+                    setError((e as Error).message);
                 });
         }
     }, [connection, grpcClient, txHash]);
 
-    function onSubmit() {
+    function onSubmit(values: FormType) {
         setError(undefined);
 
-        if (url === undefined) {
+        if (values.url === '') {
             setError(`'url' input field is undefined`);
             throw Error(`'url' input field is undefined`);
         }
@@ -94,7 +91,7 @@ export function AdminCreateItem(props: Props) {
         const parameter: TrackAndTraceContract.CreateItemParameter = {
             type: 'Some',
             content: {
-                url,
+                url: values.url,
                 hash: { type: 'None' },
             },
         };
@@ -114,38 +111,59 @@ export function AdminCreateItem(props: Props) {
     }
 
     return (
-        <div className="centered">
-            <div className="card">
-                <h2 className="centered"> Create New Product</h2>
-                <br />
-                <Form onSubmit={handleSubmit(onSubmit)}>
-                    <Form.Group className="col mb-3">
-                        <Form.Label>Url</Form.Label>
-                        <Form.Control {...register('url', { required: true })} placeholder="Enter metadata URL" />
-                        {formState.errors.url && <Alert variant="info"> Url is required </Alert>}
-                        <Form.Text />
-                    </Form.Group>
-                    <Button variant="secondary" type="submit">
-                        Add New Product
-                    </Button>
-                </Form>
-
-                {error && <Alert variant="danger">{error}</Alert>}
+        <div className="h-full w-full flex flex-col items-center pt-32">
+            <Card className="w-96">
+                <CardHeader>
+                    <CardTitle>Add New Product</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Form {...form}>
+                        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+                            <FormField
+                                control={form.control}
+                                name="url"
+                                rules={{ required: 'URL is required' }}
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>URL</FormLabel>
+                                        <FormControl>
+                                            <Input placeholder="Enter the metadata URL" {...field} />
+                                        </FormControl>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <Button type="submit">Submit</Button>
+                        </form>
+                    </Form>
+                </CardContent>
+            </Card>
+            <div className="fixed bottom-4">
+                {error && <Alert destructive title="Error" description={error} />}
                 {activeConnectorError && (
-                    <Alert variant="danger">
-                        Connect Error: {activeConnectorError}. Refresh page if you have the browser wallet installed.
-                    </Alert>
+                    <Alert
+                        destructive
+                        title="Connect Error"
+                        description={
+                            <>
+                                <p>{activeConnectorError}</p>
+                                <p>Refresh page if you have the browser wallet installed.</p>
+                            </>
+                        }
+                    />
                 )}
                 {txHash && (
-                    <>
-                        <Alert variant="info">
-                            <TxHashLink txHash={txHash} />
-                        </Alert>
-                        <Alert variant="info">You will see the item id below after the transaction is finalized.</Alert>
-                    </>
+                    <Alert
+                        title="Transaction Result"
+                        description={
+                            <>
+                                <TxHashLink txHash={txHash} />
+                                <p>You will see the item id below after the transaction is finalized.</p>
+                            </>
+                        }
+                    />
                 )}
-                {newItemId !== undefined && <Alert variant="info">Item ID: {newItemId.toString()}</Alert>}
-                {itemIdError && <Alert variant="danger">Error: {itemIdError}</Alert>}
+                {newItemId !== undefined && <Alert title="New Item" description={`Item ID: ${newItemId.toString()}`} />}
             </div>
         </div>
     );
