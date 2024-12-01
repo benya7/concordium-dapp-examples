@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { BrowserRouter as Router, Route, Routes, Link } from 'react-router-dom';
+import { BrowserRouter as Router, Route, Routes } from 'react-router-dom';
 
 import { WalletConnectionProps, useConnection, useConnect } from '@concordium/react-components';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
@@ -10,30 +10,41 @@ import { AdminCreateItem } from '@/pages/AdminCreateItem';
 import { ChangeItemStatus } from '@/pages/ChangeItemStatus';
 import { Explorer } from '@/pages/Explorer';
 import * as constants from './constants';
-import { version } from '../package.json';
+import { useIsMobile } from './hooks/use-mobile';
+import { PinataSDK } from 'pinata';
+
+const pinata = new PinataSDK({
+    pinataJwt: CONFIG.pinataJWT,
+    pinataGateway: CONFIG.pinataGateway,
+});
 
 export const App = (props: WalletConnectionProps) => {
     const { setActiveConnectorType, activeConnectorError, activeConnector, connectedAccounts, genesisHashes } = props;
 
     const { connection, setConnection, account } = useConnection(connectedAccounts, genesisHashes);
     const { connect } = useConnect(activeConnector, setConnection);
-
+    const isMobile = useIsMobile();
     useEffect(() => {
         setActiveConnectorType(constants.BROWSER_WALLET);
     }, [setActiveConnectorType]);
 
     return (
-        <SidebarProvider>
-            <AppSidebar
-                connect={connect}
-                disconnect={() => setConnection(undefined)}
-                activeConnector={activeConnector}
-                account={account}
-            />
-            <main className="w-full">
-                <Router>
+        <Router>
+            <SidebarProvider>
+                <AppSidebar
+                    connect={connect}
+                    disconnect={() => setConnection(undefined)}
+                    activeConnector={activeConnector}
+                    account={account}
+                />
+                <main className="w-full">
+                    {isMobile && (
+                        <div className="h-12 border-b flex items-center px-4">
+                            <SidebarTrigger />
+                        </div>
+                    )}
                     <Routes>
-                        <Route path="/" element={<Explorer />} />
+                        <Route path="/" element={<Explorer pinata={pinata} />} />
                         <Route
                             path="/item/create"
                             element={
@@ -41,6 +52,7 @@ export const App = (props: WalletConnectionProps) => {
                                     activeConnectorError={activeConnectorError}
                                     connection={connection}
                                     accountAddress={account}
+                                    pinata={pinata}
                                 />
                             }
                         />
@@ -61,6 +73,7 @@ export const App = (props: WalletConnectionProps) => {
                                     activeConnectorError={activeConnectorError}
                                     connection={connection}
                                     accountAddress={account}
+                                    pinata={pinata}
                                 />
                             }
                         />
@@ -75,8 +88,8 @@ export const App = (props: WalletConnectionProps) => {
                             }
                         />
                     </Routes>
-                </Router>
-            </main>
-        </SidebarProvider>
+                </main>
+            </SidebarProvider>
+        </Router>
     );
 };

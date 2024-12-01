@@ -53,7 +53,7 @@ export function AddTransitionRule(props: Props) {
     function onSubmit(values: FormType) {
         setError(undefined);
 
-        if (values.address === "") {
+        if (values.address === '') {
             setError(`'address' input field is undefined`);
             throw Error(`'address' input field is undefined`);
         }
@@ -90,8 +90,8 @@ export function AddTransitionRule(props: Props) {
     }
 
     return (
-        <div className="h-full w-full flex flex-col items-center pt-32">
-            <Card className="w-96">
+        <div className="h-full w-full flex flex-col items-center py-16 px-2">
+            <Card className="w-full max-w-md">
                 <CardHeader>
                     <CardTitle>Change Transition Rule</CardTitle>
                 </CardHeader>
@@ -103,7 +103,7 @@ export function AddTransitionRule(props: Props) {
                                 name="isUpdateAdd"
                                 render={({ field }) => (
                                     <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
-                                        <div className='flex gap-2 items-center'>
+                                        <div className="flex gap-2 items-center">
                                             <FormLabel>Add</FormLabel>
                                             <FormControl>
                                                 <Switch checked={field.value} onCheckedChange={field.onChange} />

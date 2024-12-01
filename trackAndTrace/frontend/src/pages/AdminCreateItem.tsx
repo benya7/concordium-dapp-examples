@@ -15,16 +15,23 @@ import * as constants from '../constants';
 import { TxHashLink } from '../components/CCDScanLinks';
 import { createItem } from '../track_and_trace_contract';
 import * as TrackAndTraceContract from '../../generated/module_track_and_trace';
-import { FromTokenIdU64 } from '@/lib/utils';
+import { fetchJson, FromTokenIdU64, getLocation, objectToBytes } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Alert } from '@/components/Alert';
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { InputFile } from '@/components/InputFile';
+import { LocationPicker } from '@/components/LocationPicker';
+import { LocationDetector } from '@/components/LocationDetector';
+import { PinataSDK } from 'pinata';
+import { Loader2 } from 'lucide-react';
+
 interface Props {
     connection: WalletConnection | undefined;
     accountAddress: string | undefined;
     activeConnectorError: string | undefined;
+    pinata: PinataSDK;
 }
 
 interface PartialItemCreatedEvent {
@@ -32,18 +39,19 @@ interface PartialItemCreatedEvent {
 }
 
 export function AdminCreateItem(props: Props) {
-    const { connection, accountAddress, activeConnectorError } = props;
+    const { connection, accountAddress, activeConnectorError, pinata } = props;
 
     interface FormType {
         url: string;
+        location: string;
+        productImages: File[];
     }
-    const form = useForm<FormType>({ mode: 'all', defaultValues: { url: ''} });
+    const form = useForm<FormType>({ mode: 'all', defaultValues: { url: '', location: '', productImages: [] } });
 
     const [txHash, setTxHash] = useState<string | undefined>(undefined);
     const [error, setError] = useState<string | undefined>(undefined);
-    const [imageFile, setImageFile] = useState<File | undefined>(undefined);
+    const [isLoading, setIsLoading] = useState(false);
     const [newItemId, setNewItemId] = useState<number | bigint | undefined>(undefined);
-
     const grpcClient = useGrpcClient(constants.NETWORK);
 
     // Wait until the submitted transaction is finalized.
@@ -72,47 +80,109 @@ export function AdminCreateItem(props: Props) {
                     } else {
                         setError('Tansaction failed and event decoding failed.');
                     }
+                    setIsLoading(false);
                 })
                 .catch((e) => {
                     setNewItemId(undefined);
                     setError((e as Error).message);
+                    setIsLoading(false);
                 });
         }
     }, [connection, grpcClient, txHash]);
 
-    function onSubmit(values: FormType) {
+    function onDetectLocation() {
+        getLocation(
+            (location) => form.setValue('location', `${location.latitude},${location.longitude}`),
+            (error) => setError(error),
+        );
+    }
+
+    function onSaveLocation(location: string) {
+        form.setValue('location', location);
+    }
+
+    async function onSubmit(values: FormType) {
         setError(undefined);
-
-        if (values.url === '') {
-            setError(`'url' input field is undefined`);
-            throw Error(`'url' input field is undefined`);
-        }
-
-        const parameter: TrackAndTraceContract.CreateItemParameter = {
-            type: 'Some',
-            content: {
-                url: values.url,
-                hash: { type: 'None' },
-            },
-        };
-
-        // Send transaction
         if (accountAddress && connection) {
-            createItem(connection, AccountAddress.fromBase58(accountAddress), parameter)
-                .then((txHash) => {
-                    setTxHash(txHash);
-                })
-                .catch((e) => {
+            setIsLoading(true);
+
+            let metadata: Record<string, unknown> | undefined;
+            let imageCid: string | undefined;
+            let metadataCid: string | undefined;
+
+            if (values.url !== '') {
+                try {
+                    metadata = await fetchJson(values.url);
+                } catch (e) {
                     setError((e as Error).message);
-                });
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
+            if (values.productImages.length > 0) {
+                try {
+                    imageCid = (await pinata.upload.file(values.productImages[0])).cid;
+                    if (metadata) {
+                        metadata = {
+                            ...metadata,
+                            imageUrl: `ipfs://${imageCid}`,
+                        };
+                    } else {
+                        metadata = {
+                            imageUrl: `ipfs://${imageCid}`,
+                        };
+                    }
+                } catch (e) {
+                    setError((e as Error).message);
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
+            if (metadata) {
+                try {
+                    metadataCid = (await pinata.upload.json(metadata)).cid;
+                } catch (e) {
+                    setError((e as Error).message);
+                    setIsLoading(false);
+                    return;
+                }
+            }
+
+            const parameter: TrackAndTraceContract.CreateItemParameter = {
+                additional_data: {
+                    bytes: objectToBytes({ location: values.location }),
+                },
+                metadata_url: metadataCid
+                    ? {
+                          type: 'Some',
+                          content: {
+                              url: `ipfs://${metadataCid}`,
+                              hash: { type: 'None' },
+                          },
+                      }
+                    : {
+                          type: 'None',
+                      },
+            };
+
+            try {
+                const txHash = await createItem(connection, AccountAddress.fromBase58(accountAddress), parameter);
+                setTxHash(txHash);
+                form.reset();
+            } catch (e) {
+                setError((e as Error).message);
+                setIsLoading(false);
+            }
         } else {
             setError(`Wallet is not connected. Click 'Connect Wallet' button.`);
         }
     }
 
     return (
-        <div className="h-full w-full flex flex-col items-center pt-32">
-            <Card className="w-96">
+        <div className="h-full w-full flex flex-col items-center py-16 px-2">
+            <Card className="w-full max-w-md ">
                 <CardHeader>
                     <CardTitle>Add New Product</CardTitle>
                 </CardHeader>
@@ -133,7 +203,30 @@ export function AdminCreateItem(props: Props) {
                                     </FormItem>
                                 )}
                             />
-                            <Button type="submit">Submit</Button>
+                            <FormField
+                                control={form.control}
+                                name="location"
+                                render={({ field }) => (
+                                    <FormItem>
+                                        <FormLabel>Location</FormLabel>
+                                        <FormControl>
+                                            <div className="flex w-full max-w-sm items-center space-x-1">
+                                                <Input placeholder="Enter the location coordinates" {...field} />
+                                                <LocationDetector onDetectLocation={onDetectLocation} />
+                                                <LocationPicker onSaveLocation={onSaveLocation} />
+                                            </div>
+                                        </FormControl>
+                                        <FormDescription>
+                                            Use the &quot;latitude,longitude&quot; format.
+                                        </FormDescription>
+                                        <FormMessage />
+                                    </FormItem>
+                                )}
+                            />
+                            <InputFile onChange={(imageFiles) => form.setValue('productImages', imageFiles)} />
+                            <Button type="submit" disabled={isLoading}>
+                                {isLoading ? <Loader2 className="animate-spin" /> : 'Create'}
+                            </Button>
                         </form>
                     </Form>
                 </CardContent>
